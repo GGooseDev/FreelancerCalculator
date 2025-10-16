@@ -35,38 +35,35 @@
 
   <script type="text/babel">
   const { useState, useEffect, useMemo } = React;
-  const STORAGE_KEY = 'freelance_income_tracker_singlefile_v4';
+  const STORAGE_KEY = 'freelance_income_tracker_singlefile_v5';
 
   function uid(){ return Math.random().toString(36).slice(2,9); }
   function formatDateISO(d){ const dt = new Date(d); return dt.toISOString().slice(0,10); }
-  function daysInMonth(y,m){ return new Date(y,m+1,0).getDate(); }
   function startOfMonth(date){ return new Date(date.getFullYear(), date.getMonth(), 1); }
-  function endOfMonth(date){ return new Date(date.getFullYear(), date.getMonth(), daysInMonth(date.getFullYear(), date.getMonth())); }
+  function endOfMonth(date){ return new Date(date.getFullYear(), date.getMonth()+1, 0); }
   function sumAmounts(record){ return Number(record.amount||0); }
 
   function App(){
     const [payments, setPayments] = useState(()=>{
-      try{ const raw = localStorage.getItem(STORAGE_KEY); if(!raw) return []; const parsed = JSON.parse(raw); return parsed.payments || parsed || []; }catch(e){ return []; }
+      try{ const raw = localStorage.getItem(STORAGE_KEY); if(!raw) return []; const parsed = JSON.parse(raw); return parsed.payments || parsed || []; }catch(e){ console.error(e); return []; }
     });
 
     const [form, setForm] = useState({ date: formatDateISO(new Date()), amount: '', note: '', payer: '' });
 
-    useEffect(()=>{
-      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify({ payments })); }catch(e){}
-    },[payments]);
+    useEffect(()=>{ localStorage.setItem(STORAGE_KEY, JSON.stringify({ payments })); },[payments]);
 
     function addPayment(e){ e && e.preventDefault();
+      if(!form.amount || isNaN(Number(form.amount))){ alert('Введите сумму'); return; }
       const date = form.date || formatDateISO(new Date());
-      const rec = { id: uid(), date, amount: Number(form.amount||0), note: form.note || '', payer: form.payer || '' };
+      const rec = { id: uid(), date, amount: Number(form.amount), note: form.note || '', payer: form.payer || '' };
       setPayments(p => [...p, rec].sort((a,b)=>a.date.localeCompare(b.date)));
       setForm({ date: formatDateISO(new Date()), amount:'', note:'', payer:'' });
     }
 
-    function removePayment(id){
-      setPayments(p => p.filter(x => x.id !== id));
-    }
+    function removePayment(id){ if(!confirm('Удалить платёж?')) return; setPayments(p => p.filter(x => x.id !== id)); }
 
     const today = new Date();
+    const todayISO = formatDateISO(today);
     const monthStart = startOfMonth(today);
     const monthEnd = endOfMonth(today);
 
@@ -76,10 +73,7 @@
     }), [payments]);
 
     const totalRecordedInMonth = useMemo(()=> paymentsThisMonth.reduce((a,r)=>a + sumAmounts(r), 0), [paymentsThisMonth]);
-
-    const totalDaysInMonth = daysInMonth(today.getFullYear(), today.getMonth());
-    const avgPerDay = totalDaysInMonth ? totalRecordedInMonth / totalDaysInMonth : 0;
-    const projection = avgPerDay * totalDaysInMonth;
+    const totalReceivedToDate = useMemo(()=> paymentsThisMonth.filter(p=> p.date <= todayISO).reduce((a,r)=>a + sumAmounts(r), 0), [paymentsThisMonth, todayISO]);
 
     return (
       <div>
@@ -88,7 +82,6 @@
             <h1>Freelance Income Tracker</h1>
             <div style={{fontSize:13,color:'#6b7280'}}>Данные сохраняются в браузере</div>
           </header>
-
           <form onSubmit={addPayment}>
             <div className="row">
               <div className="field"><input type="date" value={form.date} onChange={e=>setForm({...form, date: e.target.value})} /></div>
@@ -98,21 +91,20 @@
             <div style={{marginTop:6}}><textarea placeholder="Комментарий" value={form.note} onChange={e=>setForm({...form, note: e.target.value})}></textarea></div>
             <div style={{display:'flex',gap:8,marginTop:8}}>
               <button className="btn">Добавить</button>
-              <button type="button" className="btn secondary" onClick={()=>{ setPayments([]); localStorage.removeItem(STORAGE_KEY); }}>Очистить всё</button>
+              <button type="button" className="btn secondary" onClick={()=>{ if(!confirm('Очистить все данные?')) return; setPayments([]); localStorage.removeItem(STORAGE_KEY); }}>Очистить всё</button>
             </div>
           </form>
         </div>
 
         <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:12}}>
           <div className="card" style={{flex:1,minWidth:220}}>
-            <div className="mini">Учтено в этом месяце (по дату {formatDateISO(today)})</div>
-            <div style={{fontSize:18,fontWeight:600,marginTop:6}}>{totalRecordedInMonth.toFixed(2)} ₽</div>
+            <div className="mini">Уже получено в этом месяце (по дату {todayISO})</div>
+            <div style={{fontSize:18,fontWeight:600,marginTop:6}}>{totalReceivedToDate.toFixed(2)} ₽</div>
           </div>
 
           <div className="card" style={{flex:1,minWidth:260}}>
-            <div className="mini">Прогноз на месяц (по среднему за день, учтено все платежи)</div>
-            <div style={{marginTop:8,fontSize:16}}>Среднее в день: <strong>{avgPerDay.toFixed(2)} ₽</strong></div>
-            <div style={{marginTop:8,fontWeight:600}}>Проекция на месяц: {projection.toFixed(2)} ₽</div>
+            <div className="mini">Всего учтено в месяце</div>
+            <div style={{fontSize:18,fontWeight:600,marginTop:6}}>{totalRecordedInMonth.toFixed(2)} ₽</div>
           </div>
         </div>
 
