@@ -4,17 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Freelance Income Tracker</title>
-
-  <!-- React + ReactDOM + Babel (для single-file) -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
   <style>
-    :root{
-      --bg:#f3f4f6; --card:#ffffff; --muted:#6b7280; --accent:#3b82f6; --danger:#ef4444;
-      --radius:12px; --gap:12px; --pad:16px;
-    }
+    :root{--bg:#f3f4f6;--card:#ffffff;--muted:#6b7280;--accent:#3b82f6;--danger:#ef4444;--radius:12px;--gap:12px;--pad:16px}
     html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;padding:18px;background:var(--bg);color:#0f172a}
     .wrap{max-width:880px;margin:0 auto;display:flex;gap:var(--gap);flex-direction:column;align-items:stretch}
     .card{background:var(--card);border-radius:var(--radius);box-shadow:0 8px 30px rgba(2,6,23,0.06);padding:var(--pad);overflow:hidden}
@@ -23,25 +17,17 @@
     form {display:flex;flex-direction:column;gap:10px}
     .row{display:flex;gap:10px}
     .row .field{flex:1}
-    input[type="text"], input[type="date"], input[type="number"], textarea {
-      width:100%;box-sizing:border-box;padding:10px;border-radius:10px;border:1px solid #e6e9ee;background:transparent;
-    }
+    input[type="text"], input[type="date"], input[type="number"], textarea {width:100%;box-sizing:border-box;padding:10px;border-radius:10px;border:1px solid #e6e9ee;background:transparent}
     textarea{min-height:52px;resize:vertical}
-    label.inline{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted)}
     .btn{background:var(--accent);color:#fff;border:none;padding:10px 14px;border-radius:10px;cursor:pointer}
     .btn.secondary{background:transparent;color:var(--accent);border:1px solid rgba(59,130,246,0.12)}
-    .stats{display:flex;gap:12px;flex-wrap:wrap}
-    .stat{background:#f8fafc;padding:10px;border-radius:10px;min-width:160px}
     .mini{font-size:13px;color:var(--muted)}
     .list{display:flex;flex-direction:column;gap:8px}
     .item{display:flex;justify-content:space-between;align-items:center;padding:10px;border-radius:10px;border:1px solid #eef2f7;background:#fff}
     .item .left{display:flex;flex-direction:column}
     .item .meta{font-size:13px;color:var(--muted)}
     .remove{background:transparent;border:none;color:var(--danger);font-size:18px;cursor:pointer}
-    @media (max-width:700px){
-      .row{flex-direction:column}
-      .stats{flex-direction:column}
-    }
+    @media (max-width:700px){.row{flex-direction:column}}
   </style>
 </head>
 <body>
@@ -49,88 +35,58 @@
 
   <script type="text/babel">
   const { useState, useEffect, useMemo } = React;
-  const STORAGE_KEY = "freelance_income_tracker_autofix_v1";
+  const STORAGE_KEY = 'freelance_income_tracker_singlefile_v4';
 
   function uid(){ return Math.random().toString(36).slice(2,9); }
-  function formatDateISO(d){ const dt=new Date(d); return dt.toISOString().slice(0,10); }
+  function formatDateISO(d){ const dt = new Date(d); return dt.toISOString().slice(0,10); }
   function daysInMonth(y,m){ return new Date(y,m+1,0).getDate(); }
   function startOfMonth(date){ return new Date(date.getFullYear(), date.getMonth(), 1); }
   function endOfMonth(date){ return new Date(date.getFullYear(), date.getMonth(), daysInMonth(date.getFullYear(), date.getMonth())); }
-  function sumAmounts(record){ if(record.parts && record.parts.length) return record.parts.reduce((a,p)=>a+Number(p.amount||0),0); return Number(record.amount||0); }
-  function daysBetweenInclusive(a,b){ const da=new Date(a); const db=new Date(b); da.setHours(12,0,0,0); db.setHours(12,0,0,0); const diff=Math.round((db-da)/(1000*60*60*24)); return diff+1; }
+  function sumAmounts(record){ return Number(record.amount||0); }
 
   function App(){
-    const [payments,setPayments] = useState(()=>{
-      try{
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if(!raw) return [];
-        const parsed = JSON.parse(raw);
-        return parsed.payments || parsed;
-      }catch(e){ return []; }
+    const [payments, setPayments] = useState(()=>{
+      try{ const raw = localStorage.getItem(STORAGE_KEY); if(!raw) return []; const parsed = JSON.parse(raw); return parsed.payments || parsed || []; }catch(e){ return []; }
     });
 
-    const [form, setForm] = useState({
-      date: formatDateISO(new Date()), split:false, amount:'', partA:'', partB:'', note:'', payer:''
-    });
+    const [form, setForm] = useState({ date: formatDateISO(new Date()), amount: '', note: '', payer: '' });
 
-    const [range, setRange] = useState({
-      from: formatDateISO(new Date()), to: formatDateISO(new Date()), targetDays:30
-    });
-
-    // persist
-    useEffect(()=> {
-      try{
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ payments, settings:{ form, range } }));
-      }catch(e){}
-    },[payments, form, range]);
-
-    function resetForm(){ setForm({ date: formatDateISO(new Date()), split:false, amount:'', partA:'', partB:'', note:'', payer:'' }); }
-    function addPayment(e){
-      e && e.preventDefault();
-      const date = form.date || formatDateISO(new Date());
-      let record;
-      if(form.split){
-        const a = form.partA !== '' ? Number(form.partA) : Math.round((Number(form.amount||0)/2)*100)/100;
-        const b = form.partB !== '' ? Number(form.partB) : Math.round((Number(form.amount||0)-a)*100)/100;
-        record = { id: uid(), date, parts: [{id:uid(), amount:a},{id:uid(), amount:b}], note: form.note, payer: form.payer || ''};
-      } else {
-        record = { id: uid(), date, amount: Number(form.amount || 0), note: form.note, payer: form.payer || '' };
-      }
-      setPayments(p => [...p, record].sort((x,y)=> x.date.localeCompare(y.date)));
-      resetForm();
-    }
-
-    function removePayment(id){ if(!confirm('Удалить платёж?')) return; setPayments(p => p.filter(x => x.id !== id)); }
-
-    const totalMonth = useMemo(()=>{
-      const now = new Date();
-      const s = startOfMonth(now); const e = endOfMonth(now);
-      return payments.filter(p => new Date(p.date) >= s && new Date(p.date) <= e).reduce((a,r)=> a + sumAmounts(r), 0);
+    useEffect(()=>{
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify({ payments })); }catch(e){}
     },[payments]);
 
-    const forecast = useMemo(()=>{
-      const now = new Date(); const day = now.getDate(); const dim = daysInMonth(now.getFullYear(), now.getMonth());
-      return day ? (totalMonth / day) * dim : 0;
-    },[totalMonth]);
+    function addPayment(e){ e && e.preventDefault();
+      const date = form.date || formatDateISO(new Date());
+      const rec = { id: uid(), date, amount: Number(form.amount||0), note: form.note || '', payer: form.payer || '' };
+      setPayments(p => [...p, rec].sort((a,b)=>a.date.localeCompare(b.date)));
+      setForm({ date: formatDateISO(new Date()), amount:'', note:'', payer:'' });
+    }
 
-    const rangeStats = useMemo(()=>{
-      try{
-        const f = new Date(range.from + 'T00:00:00'); const t = new Date(range.to + 'T00:00:00');
-        if(isNaN(f)||isNaN(t)|| f>t) return { total:0, days:0, dailyAvg:0, projection:0 };
-        const rec = payments.filter(p => { const d = new Date(p.date + 'T00:00:00'); return d >= f && d <= t; });
-        const total = rec.reduce((a,r)=> a + sumAmounts(r), 0);
-        const days = daysBetweenInclusive(range.from, range.to);
-        const avg = days ? total / days : 0;
-        return { total, days, dailyAvg: avg, projection: avg * Number(range.targetDays || 30) };
-      }catch(e){ return { total:0, days:0, dailyAvg:0, projection:0 }; }
-    }, [payments, range]);
+    function removePayment(id){
+      setPayments(p => p.filter(x => x.id !== id));
+    }
+
+    const today = new Date();
+    const monthStart = startOfMonth(today);
+    const monthEnd = endOfMonth(today);
+
+    const paymentsThisMonth = useMemo(()=> payments.filter(p=>{
+      const d = new Date(p.date + 'T00:00:00');
+      return d >= monthStart && d <= monthEnd;
+    }), [payments]);
+
+    const totalRecordedInMonth = useMemo(()=> paymentsThisMonth.reduce((a,r)=>a + sumAmounts(r), 0), [paymentsThisMonth]);
+
+    const totalDaysInMonth = daysInMonth(today.getFullYear(), today.getMonth());
+    const avgPerDay = totalDaysInMonth ? totalRecordedInMonth / totalDaysInMonth : 0;
+    const projection = avgPerDay * totalDaysInMonth;
 
     return (
       <div>
         <div className="card" style={{marginBottom:12}}>
           <header>
             <h1>Freelance Income Tracker</h1>
-            <div style={{fontSize:13,color:'var(--muted)'}}>Saved locally — работает офлайн</div>
+            <div style={{fontSize:13,color:'#6b7280'}}>Данные сохраняются в браузере</div>
           </header>
 
           <form onSubmit={addPayment}>
@@ -138,26 +94,8 @@
               <div className="field"><input type="date" value={form.date} onChange={e=>setForm({...form, date: e.target.value})} /></div>
               <div className="field"><input type="text" placeholder="Кто внёс (имя)" value={form.payer} onChange={e=>setForm({...form, payer: e.target.value})} /></div>
             </div>
-
             <div style={{marginTop:6}}><input type="number" placeholder="Сумма" value={form.amount} onChange={e=>setForm({...form, amount: e.target.value})} /></div>
-
-            <div style={{display:'flex',alignItems:'center',gap:10,marginTop:6}}>
-              <label className="inline"><input type="checkbox" checked={form.split} onChange={e=>setForm({...form, split: e.target.checked})} /> Разделить на 2</label>
-              <button type="button" className="btn secondary" onClick={()=>{
-                // quick helper: fill today's date & keep focus
-                setForm(f=>({...f, date: formatDateISO(new Date())}));
-              }}>Today</button>
-            </div>
-
-            {form.split && (
-              <div className="row" style={{marginTop:6}}>
-                <div className="field"><input type="number" placeholder="Часть 1" value={form.partA} onChange={e=>setForm({...form, partA: e.target.value})} /></div>
-                <div className="field"><input type="number" placeholder="Часть 2" value={form.partB} onChange={e=>setForm({...form, partB: e.target.value})} /></div>
-              </div>
-            )}
-
             <div style={{marginTop:6}}><textarea placeholder="Комментарий" value={form.note} onChange={e=>setForm({...form, note: e.target.value})}></textarea></div>
-
             <div style={{display:'flex',gap:8,marginTop:8}}>
               <button className="btn">Добавить</button>
               <button type="button" className="btn secondary" onClick={()=>{ setPayments([]); localStorage.removeItem(STORAGE_KEY); }}>Очистить всё</button>
@@ -167,38 +105,21 @@
 
         <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:12}}>
           <div className="card" style={{flex:1,minWidth:220}}>
-            <div className="mini">Текущий месяц</div>
-            <div style={{fontSize:18,fontWeight:600,marginTop:6}}>{totalMonth.toFixed(2)} ₽</div>
-            <div className="mini" style={{marginTop:6}}>Прогноз на месяц: <strong>{forecast.toFixed(2)} ₽</strong></div>
+            <div className="mini">Учтено в этом месяце (по дату {formatDateISO(today)})</div>
+            <div style={{fontSize:18,fontWeight:600,marginTop:6}}>{totalRecordedInMonth.toFixed(2)} ₽</div>
           </div>
 
           <div className="card" style={{flex:1,minWidth:260}}>
-            <div className="mini">Прогноз по диапазону</div>
-            <div style={{display:'flex',gap:8,marginTop:8,alignItems:'center'}}>
-              <input type="date" value={range.from} onChange={e=>setRange({...range, from: e.target.value})} />
-              <span style={{fontSize:18}}>→</span>
-              <input type="date" value={range.to} onChange={e=>setRange({...range, to: e.target.value})} />
-            </div>
-            <div style={{marginTop:8,display:'flex',gap:8,alignItems:'center'}}>
-              <input type="number" value={range.targetDays} onChange={e=>setRange({...range, targetDays: Number(e.target.value)||0})} style={{width:110}} />
-              <button className="btn secondary" type="button" onClick={()=>{
-                const to = new Date(); const from = new Date(); from.setDate(to.getDate()-29);
-                setRange({...range, from: formatDateISO(from), to: formatDateISO(to)});
-              }}>Last 30 days</button>
-            </div>
-
-            <div style={{marginTop:10,fontSize:14}}>
-              <div>Всего: <strong>{rangeStats.total.toFixed(2)} ₽</strong></div>
-              <div className="mini">Дней: {rangeStats.days} · Среднее/день: {rangeStats.dailyAvg.toFixed(2)} ₽</div>
-              <div style={{marginTop:6,fontWeight:600}}>Проекция: {rangeStats.projection.toFixed(2)} ₽</div>
-            </div>
+            <div className="mini">Прогноз на месяц (по среднему за день, учтено все платежи)</div>
+            <div style={{marginTop:8,fontSize:16}}>Среднее в день: <strong>{avgPerDay.toFixed(2)} ₽</strong></div>
+            <div style={{marginTop:8,fontWeight:600}}>Проекция на месяц: {projection.toFixed(2)} ₽</div>
           </div>
         </div>
 
         <div className="card">
-          <h3 style={{marginTop:0}}>Платежи</h3>
+          <h3 style={{marginTop:0}}>Платежи (этот месяц)</h3>
           <div className="list" style={{marginTop:8}}>
-            {payments.length === 0 ? <div className="mini" style={{padding:10}}>Нет платежей — добавь первый</div> : payments.map(p=>(
+            {paymentsThisMonth.length === 0 ? <div className="mini" style={{padding:10}}>Нет платежей в этом месяце</div> : paymentsThisMonth.map(p=>(
               <div key={p.id} className="item">
                 <div className="left">
                   <div style={{fontWeight:600}}>{p.date} — {sumAmounts(p).toFixed(2)} ₽ {p.payer ? `— ${p.payer}` : ''}</div>
