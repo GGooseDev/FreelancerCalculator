@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Freelance Income Tracker</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #f5f5f5; margin: 0; padding: 0; }
+    .app { max-width: 600px; margin: 20px auto; background: #fff; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); padding: 20px; }
+    input, button { border-radius: 8px; }
+    button { cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const STORAGE_KEY = "freelance_income_tracker_v1_with_settings";
+
+    function uid(){ return Math.random().toString(36).slice(2,9); }
+    function formatDateISO(d){ const dt=new Date(d); return dt.toISOString().slice(0,10); }
+    function daysInMonth(y,m){ return new Date(y,m+1,0).getDate(); }
+    function startOfMonth(date){ return new Date(date.getFullYear(),date.getMonth(),1); }
+    function endOfMonth(date){ return new Date(date.getFullYear(),date.getMonth(),daysInMonth(date.getFullYear(),date.getMonth())); }
+    function sumAmounts(record){ if(record.parts&&record.parts.length)return record.parts.reduce((a,p)=>a+Number(p.amount||0),0); return Number(record.amount||0); }
+    function daysBetweenInclusive(a,b){ const da=new Date(a); const db=new Date(b); da.setHours(12,0,0,0); db.setHours(12,0,0,0); const diff=Math.round((db-da)/(1000*60*60*24)); return diff+1; }
+
+    function App(){
+      const [payments,setPayments]=React.useState(()=>{ try{const raw=localStorage.getItem(STORAGE_KEY);if(!raw)return[];const p=JSON.parse(raw);return p.payments||p;}catch(e){return[];} });
+      const [form,setForm]=React.useState({date:formatDateISO(new Date()),split:false,amount:"",partA:"",partB:"",note:"",payer:""});
+      const [range,setRange]=React.useState({from:formatDateISO(new Date()),to:formatDateISO(new Date()),targetDays:30});
+
+      React.useEffect(()=>{ localStorage.setItem(STORAGE_KEY,JSON.stringify({payments,settings:{form,range}})); },[payments,form,range]);
+
+      function resetForm(){ setForm({date:formatDateISO(new Date()),split:false,amount:"",partA:"",partB:"",note:"",payer:""}); }
+      function addPayment(e){ e.preventDefault(); const date=form.date||formatDateISO(new Date()); let record; if(form.split){ const a=form.partA!==""?Number(form.partA):Math.round((Number(form.amount||0)/2)*100)/100; const b=form.partB!==""?Number(form.partB):Math.round((Number(form.amount||0)-a)*100)/100; record={id:uid(),date,parts:[{id:uid(),amount:a},{id:uid(),amount:b}],note:form.note,payer:form.payer}; } else { record={id:uid(),date,amount:Number(form.amount||0),note:form.note,payer:form.payer}; } setPayments(p=>[...p,record].sort((a,b)=>a.date.localeCompare(b.date))); resetForm(); }
+      function removePayment(id){ if(!confirm('Удалить платёж?'))return; setPayments(p=>p.filter(x=>x.id!==id)); }
+
+      const totalMonth=React.useMemo(()=>{ const now=new Date();const s=startOfMonth(now);const e=endOfMonth(now);return payments.filter(p=>new Date(p.date)>=s&&new Date(p.date)<=e).reduce((a,r)=>a+sumAmounts(r),0);},[payments]);
+      const forecast=React.useMemo(()=>{const now=new Date();const d=now.getDate();const dim=daysInMonth(now.getFullYear(),now.getMonth());return d?(totalMonth/d)*dim:0;},[totalMonth]);
+
+      const rangeStats=React.useMemo(()=>{try{const f=new Date(range.from+"T00:00:00"),t=new Date(range.to+"T00:00:00");if(isNaN(f)||isNaN(t)||f>t)return{total:0,days:0,dailyAvg:0,projection:0};const rec=payments.filter(p=>{const d=new Date(p.date+"T00:00:00");return d>=f&&d<=t;});const total=rec.reduce((a,r)=>a+sumAmounts(r),0);const days=daysBetweenInclusive(range.from,range.to);const avg=days?total/days:0;return{total,days,dailyAvg:avg,projection:avg*Number(range.targetDays||30)};}catch(e){return{total:0,days:0,dailyAvg:0,projection:0};}},[payments,range]);
+
+      return (<div className="app">
+        <h1>Freelance Income Tracker</h1>
+        <form onSubmit={addPayment}>
+          <div style={{display:'flex',gap:'6px'}}>
+            <input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/>
+            <input placeholder="Кто внёс" value={form.payer} onChange={e=>setForm({...form,payer:e.target.value})}/>
+          </div>
+          <input type="number" placeholder="Сумма" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})}/>
+          <label><input type="checkbox" checked={form.split} onChange={e=>setForm({...form,split:e.target.checked})}/> Разделить на 2</label>
+          {form.split && (<div style={{display:'flex',gap:'6px'}}>
+            <input type="number" placeholder="Часть 1" value={form.partA} onChange={e=>setForm({...form,partA:e.target.value})}/>
+            <input type="number" placeholder="Часть 2" value={form.partB} onChange={e=>setForm({...form,partB:e.target.value})}/>
+          </div>)}
+          <input placeholder="Комментарий" value={form.note} onChange={e=>setForm({...form,note:e.target.value})}/>
+          <button>Добавить</button>
+        </form>
+
+        <h3>Текущий месяц: {totalMonth.toFixed(2)} ₽</h3>
+        <p>Прогноз на месяц: {forecast.toFixed(2)} ₽</p>
+
+        <div style={{border:'1px solid #ddd',padding:'10px',borderRadius:'8px'}}>
+          <h4>Прогноз по диапазону</h4>
+          <input type="date" value={range.from} onChange={e=>setRange({...range,from:e.target.value})}/>→
+          <input type="date" value={range.to} onChange={e=>setRange({...range,to:e.target.value})}/>
+          <input type="number" value={range.targetDays} onChange={e=>setRange({...range,targetDays:Number(e.target.value)||0})}/>
+          <div>Всего: {rangeStats.total.toFixed(2)} ₽</div>
+          <div>Среднее в день: {rangeStats.dailyAvg.toFixed(2)} ₽</div>
+          <div>Проекция: {rangeStats.projection.toFixed(2)} ₽</div>
+        </div>
+
+        <h3>Платежи</h3>
+        <ul>
+          {payments.map(p=>(<li key={p.id}>{p.date} — {sumAmounts(p)} ₽ {p.payer?`(${p.payer})`:''} <button onClick={()=>removePayment(p.id)}>✕</button></li>))}
+        </ul>
+      </div>);
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>
